@@ -35,17 +35,29 @@ def test_build_messages_with_assistant_response():
 
 
 def test_build_extra_body_flags():
-  body = _build_extra_body(True, True, "POLICY")
+  body = _build_extra_body(True, True)
   kw = body["chat_template_kwargs"]
   assert kw["enable_thinking"] is True
   assert kw["request_categories"] == "/categories"
-  assert kw["custom_policy"] == "POLICY"
 
 
 def test_build_extra_body_minimal():
-  body = _build_extra_body(False, False, None)
+  body = _build_extra_body(False, False)
   kw = body["chat_template_kwargs"]
   assert kw == {"enable_thinking": False}
+
+
+def test_custom_policy_embedded_in_user_turn():
+  # On OpenRouter the policy must ride in the user turn; chat_template_kwargs is ignored.
+  msgs = _build_messages("max dose of oxycodone?", None, None, "### Policy\nName: Pharma")
+  text = msgs[0]["content"][-1]["text"]
+  assert "### Policy" in text
+  assert text.strip().endswith("max dose of oxycodone?")
+
+
+def test_no_policy_leaves_prompt_unchanged():
+  msgs = _build_messages("hello", None, None, None)
+  assert msgs[0]["content"][-1]["text"] == "hello"
 
 
 def test_resolve_image_local_file_to_data_uri(tmp_path):

@@ -35,15 +35,29 @@ def _resolve_image(image: str) -> str:
   return _to_data_uri(image)
 
 
+def _apply_policy(user_prompt: str, custom_policy: str | None) -> str:
+  """Embed a custom policy into the user turn.
+
+  On the OpenRouter path the documented ``chat_template_kwargs.custom_policy`` knob
+  is silently ignored, and a system message is ignored too -- the policy only
+  reaches the model when it is part of the user turn. (A self-hosted NIM/vLLM that
+  applies the official chat template can use ``custom_policy`` directly instead.)
+  """
+  if not custom_policy:
+    return user_prompt
+  return f"{custom_policy.strip()}\n\n### User Prompt\n{user_prompt}"
+
+
 def _build_messages(
   user_prompt: str,
   image: str | None,
   assistant_response: str | None,
+  custom_policy: str | None = None,
 ) -> list[dict]:
   content: list[dict] = []
   if image:
     content.append({"type": "image_url", "image_url": {"url": _resolve_image(image)}})
-  content.append({"type": "text", "text": user_prompt})
+  content.append({"type": "text", "text": _apply_policy(user_prompt, custom_policy)})
 
   messages: list[dict] = [{"role": "user", "content": content}]
   if assistant_response is not None:
@@ -56,13 +70,10 @@ def _build_messages(
 def _build_extra_body(
   enable_thinking: bool,
   request_categories: bool,
-  custom_policy: str | None,
 ) -> dict:
   kwargs: dict = {"enable_thinking": enable_thinking}
   if request_categories:
     kwargs["request_categories"] = "/categories"
-  if custom_policy:
-    kwargs["custom_policy"] = custom_policy
   return {"chat_template_kwargs": kwargs}
 
 
@@ -94,8 +105,8 @@ def moderate(
     raise MissingKeyError("OPENROUTER_API_KEY is not set; cannot make a live call.")
 
   client = _client(config)
-  messages = _build_messages(user_prompt, image, assistant_response)
-  extra_body = _build_extra_body(enable_thinking, request_categories, custom_policy)
+  messages = _build_messages(user_prompt, image, assistant_response, custom_policy)
+  extra_body = _build_extra_body(enable_thinking, request_categories)
 
   start = time.perf_counter()
   text, reasoning = _call_with_backoff(client, config.model_id, messages, extra_body)
